@@ -1,0 +1,165 @@
+---
+title: "Bayesian-networks"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Collaborators : Andrej Betik(456604), Petr Klanica(469223), Marcel Kubík(433719)
+
+```{r include=FALSE}
+# Packages installation
+install_pckgs_if_not_installed <- function(pkg){
+    new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+    if (length(new.pkg)) 
+        install.packages(new.pkg, dependencies = TRUE)
+    sapply(pkg, require, character.only = TRUE)
+}
+pckgs <- c("ggplot2", "gridExtra", "mice", "caret")
+suppressWarnings(install_pckgs_if_not_installed(pckgs))
+```
+
+## 1. Introduction
+
+1. Dataset : German Credit Data, Learning Algorithm : Bayesian Generalized Linear Model (Andrej Betik)
+2. 
+3.
+
+## 2. Exploratory Analysis
+
+### 1. German Credit Data
+
+This dataset contains data about people attempting to take a credit by the bank. Each person represents a Good Risk or Bad Risk for bank.
+
+Good Risk:
+An assumption that customer who takes a credit will be able to pay invoices. The bank tends to give a credit to this customer
+
+Bad Risk:
+A loan that is unlikely to be repaid because of bad credit history, insufficient income, or some other reason.
+
+The original dataset contains 1000 entries with 20 categorial/symbolic attributes prepared by Prof. Hofmann. The original dataset can be found at https://archive.ics.uci.edu/ml/datasets/Statlog+%28German+Credit+Data%29
+
+Hoverever the original dataset is kind of messy so I got simplified and well documented version from kaggle site https://www.kaggle.com/uciml/german-credit
+
+#### The selected atributes are:
+1. Age (numeric)
+2. Sex (text: male, female)
+3. Job (numeric: 0 - unskilled and non-resident, 1 - unskilled and resident, 2 - skilled, 3 - highly skilled)
+4. Housing (text: own, rent, or free)
+5. Saving accounts (text - little, moderate, quite rich, rich)
+6. Checking account (numeric, in DM - Deutsch Mark)
+7. Credit amount (numeric, in DM)
+8. Duration (numeric, in month)
+9. Purpose (text: car, furniture/equipment, radio/TV, domestic appliances, repairs, education, business, vacation/others)
+10. Risk(Target value- Goor or Bad Risk)
+
+First look at the data
+
+```{r}
+#loading the dataset
+german_credit_data <- read.csv("data/german_credit_data.csv")
+# deleting the index column, the author was using that to uniquely identify every row
+german_credit_data = german_credit_data[,-1]
+# showing all the attributes and values it can take
+str(german_credit_data)
+```
+
+Proportion of Good / Bad risk
+
+```{r}
+barplot(c(table(german_credit_data$Risk)), col = c("red", "blue"))
+```
+
+Attribute Distributions
+```{r}
+par(mfrow=c(3,2))
+hist(german_credit_data$Age, xlab = "Age", main = "Age Distribution")
+hist(german_credit_data$Job, xlab = "Job  (0-non-resident,1-resident,2-skilled,3-highly skilled)", main = "Job Distribution")
+hist(german_credit_data$Credit.amount, xlab = "Credit Amount", main = "Credit Amount Distribution")
+hist(german_credit_data$Duration, xlab = "Duration", main = "Duration Distribution")
+hist(as.numeric(german_credit_data$Housing), xlab = "Housing  (1-free, 2-own, 3-rent)", main = "Housing Distribution")
+barplot(c(table(german_credit_data$Sex)))
+
+```
+
+
+Inspection of interesting data features
+```{r}
+# People at very young age seem to have worse credit worthiness
+p1 <- ggplot(german_credit_data, aes(x=Age, color=Risk)) + geom_density()
+# The shorter the credit loan duration, the better the chance of getting loan"
+p2 <- ggplot(german_credit_data, aes(x=Duration, color=Risk)) + geom_density()
+# A trend of "Higher credit amount, better credit worthiness"
+p3 <- ggplot(german_credit_data, aes(x=Credit.amount, color=Risk)) + geom_density()
+grid.arrange(p1, p2, p3)
+```
+
+Inspection of NA values
+```{r}
+number_of_na_values <- sum(is.na(german_credit_data))
+number_of_not_na_values <- sum(!is.na(german_credit_data))
+# Proportion of number of NA values and number of normal(not NA values) out of all values
+barplot(c(number_of_na_values, number_of_not_na_values), names.arg = c("NA", "Not NA"))
+```
+
+Na values occur only in attributes Savings Account and Checking account
+```{r}
+sum(is.na(german_credit_data))
+sum(is.na(german_credit_data$Saving.accounts)) + sum(is.na(german_credit_data$Checking.account))
+
+```
+
+## 3. Preprocessing
+### 1. German Credit Data
+Since this dataset contains a lot of NA values, lets get rid of it with function mice
+```{r}
+# Number of NA values
+sum(is.na(german_credit_data))
+# First 5 NA values
+head(german_credit_data[, c(5,6)])
+german_credit_data <- complete(mice(german_credit_data))
+sum(is.na(german_credit_data))
+head(german_credit_data[, c(5,6)])
+```
+
+Apparantly this dataset is unballanced(has unequal number of instances for different classes)
+```{r}
+table(german_credit_data$Risk)
+#TODO Over/Under Sampling
+
+```
+
+
+## 4. Learning Algorithms
+### 1. Bayesian Generalized Linear Model
+Tbe  generalized linear model (GLM) is a flexible generalization of ordinary linear regression that allows for response variables that have error distribution models other than a normal distribution. The GLM generalizes linear regression by allowing the linear model to be related to the response variable via a link function and by allowing the magnitude of the variance of each measurement to be a function of its predicted value.
+
+The GLM consists of three elements:
+
+1. An exponential family of probability distributions.
+2. A linear predictor η = Xβ .
+3. A link function g such that E(Y|X) = μ = g−1(η).
+
+## 5. Evaluation
+### 1. Bayesian Generalized Linear Model
+```{r}
+# TODO trainControl and cv method
+set.seed(123)
+indicies <- createDataPartition(german_credit_data$Risk, p = 0.7, list=FALSE)
+german_credit_train <- german_credit_data[indicies, ]
+german_credit_test <- german_credit_data[-indicies, ]
+bayesglm_german_credit_model <- train(Risk ~ ., data = german_credit_train, method = "bayesglm")
+bayesglm_german_credit_prediction <- predict(bayesglm_german_credit_model, german_credit_test)
+confusionMatrix(bayesglm_german_credit_prediction, german_credit_test$Risk)
+
+```
+
+## 6. Conclusion
+## 7. References
+https://archive.ics.uci.edu/ml/datasets/Statlog+%28German+Credit+Data%29  
+https://www.kaggle.com/uciml/german-credit  
+https://en.wikipedia.org/wiki/Generalized_linear_model
