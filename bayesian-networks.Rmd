@@ -19,7 +19,7 @@ install_pckgs_if_not_installed <- function(pkg){
         install.packages(new.pkg, dependencies = TRUE)
     sapply(pkg, require, character.only = TRUE)
 }
-pckgs <- c("ggplot2", "gridExtra", "mice", "caret")
+pckgs <- c("ggplot2", "gridExtra", "mice", "caret", "arm", "ROSE")
 suppressWarnings(install_pckgs_if_not_installed(pckgs))
 ```
 
@@ -127,10 +127,29 @@ head(german_credit_data[, c(5,6)])
 ```
 
 Apparantly this dataset is unballanced(has unequal number of instances for different classes)
+
 ```{r}
 table(german_credit_data$Risk)
-#TODO Over/Under Sampling
+```
 
+Using function ovun.sample to ballance the data
+It creates possibly balanced samples by combination of random over-sampling minority examples and under-sampling
+majority examples.
+Over/Under sampling whole dataset would create copies of the same point.
+It may end up in both the training and test sets. This allows the classifier to cheat.
+Firstly I will divide the dataset to train/test and over/under sample just the train one.
+```{r}
+set.seed(123)
+indicies <- createDataPartition(german_credit_data$Risk, p = 0.6, list=FALSE)
+german_credit_train <- german_credit_data[indicies, ]
+german_credit_test <- german_credit_data[-indicies, ]
+train_balanced_german_data <- ovun.sample(Risk ~., data=german_credit_train)$data
+table(train_balanced_german_data$Risk)
+```
+
+Test data are still unbalanced but not really much to do with it.
+```{r}
+table(german_credit_test$Risk)
 ```
 
 
@@ -146,19 +165,52 @@ The GLM consists of three elements:
 
 ## 5. Evaluation
 ### 1. Bayesian Generalized Linear Model
-```{r}
-# TODO trainControl and cv method
-set.seed(123)
-indicies <- createDataPartition(german_credit_data$Risk, p = 0.7, list=FALSE)
-german_credit_train <- german_credit_data[indicies, ]
-german_credit_test <- german_credit_data[-indicies, ]
-bayesglm_german_credit_model <- train(Risk ~ ., data = german_credit_train, method = "bayesglm")
-bayesglm_german_credit_prediction <- predict(bayesglm_german_credit_model, german_credit_test)
-confusionMatrix(bayesglm_german_credit_prediction, german_credit_test$Risk)
 
+I'v made a function that performs the training process multiple times so the random paritioning doesn't effect the process.
+
+iterations - number of iterations, splitPercantage - the train/test partition ratio
+
+```{r}
+set.seed(123)
+germanEvaluation <- function(iterations, splitPercentage ) {
+  accuracies <- numeric(iterations)
+  for (i in 1:iterations) {
+    # I have created the partition train/test before in the preprocess section but it was just for explain purposes.
+    # Now its partitioned again in every iteration in cycle.
+    # The same holds for balancing the data.
+    indicies <- createDataPartition(german_credit_data$Risk, p = splitPercentage, list=FALSE)
+    german_credit_train <- german_credit_data[indicies, ]
+    german_credit_test <- german_credit_data[-indicies, ]
+    train_balanced_german_data <- ovun.sample(Risk ~., data=german_credit_train)$data
+  
+    bayesglm_german_credit_model <- train(Risk ~., data=train_balanced_german_data, method="bayesglm",
+                                          trControl = trainControl(method = "cv", number=3))
+    
+    bayesglm_german_credit_prediction <- predict(bayesglm_german_credit_model, german_credit_test)
+    conf <- suppressWarnings(confusionMatrix(bayesglm_german_credit_prediction, german_credit_test$Risk))
+    accuracies[i] <- conf$overall['Accuracy']
+    cat("-", sep="") # just to see the progress of training
+  }
+  cat("\n")
+  cat("Best accuracy for split ratio" , splitPercentage, " : ", max(accuracies))
+  accuracies
+}
+eval1 <- germanEvaluation(30, 0.7)
+eval2 <- germanEvaluation(30, 0.95)
+```
+
+
+```{r}
+boxplot(eval1, eval2)
 ```
 
 ## 6. Conclusion
+### 1. German Credit Data
+Bayesian Generalized Linear Model results :
+Within the scope 70%(train) 30%(test), best accuracy is around 0.7.
+On 95%(train) 5% test, best accuracy is around 0.75.
+The results are pretty poor. However the size of the dataset is not large and test set is really unbalanced(120/280 - bad/good). Therefore I think it gave us decent predictions.
+
 ## 7. References
 https://archive.ics.uci.edu/ml/datasets/Statlog+%28German+Credit+Data%29  
 https://www.kaggle.com/uciml/german-credit  
