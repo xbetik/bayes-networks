@@ -19,14 +19,14 @@ install_pckgs_if_not_installed <- function(pkg){
         install.packages(new.pkg, dependencies = TRUE)
     sapply(pkg, require, character.only = TRUE)
 }
-pckgs <- c("ggplot2", "gridExtra", "mice", "caret", "arm", "ROSE")
+pckgs <- c("ggplot2", "gridExtra", "mice", "caret", "arm", "ROSE", "forcats")
 suppressWarnings(install_pckgs_if_not_installed(pckgs))
 ```
 
 ## 1. Introduction
 
 1. Dataset : German Credit Data, Learning Algorithm : Bayesian Generalized Linear Model (Andrej Betik)
-2. 
+2. Dataset: Ramen Reviews, Learning Algorithm: Averaged One Dependency Estimator (Petr Klanica)
 3.
 
 ## 2. Exploratory Analysis
@@ -112,6 +112,26 @@ sum(is.na(german_credit_data))
 sum(is.na(german_credit_data$Saving.accounts)) + sum(is.na(german_credit_data$Checking.account))
 
 ```
+### 2. Ramen Reviews
+This dataset contains over 2000 reviews for different instant ramen soups. The goal I set was to try and estimate review score based on the other features. However this dataset is very dirty and very basic so it will require some cleaning and feature extraction to be more useable. Let's take a look at the data.
+```{r}
+ramen_reviews <- read.csv("data/ramen-ratings.csv")
+summary(ramen_reviews)
+```
+As we can see, there are few useless columns like review number or Top Ten rating. There are also a few other noteworthy columns:
+
+1. Brand: We can see that there are a few brands that have significant representation, but there are many others that have just a few soups in the list. This brings us to a question wether to remove this column entirely or not. I belive that even though we will probably only preserve a few of the brands and cluster most of the remaining ones into an "other" category, the brand can still tell us a lot about the quality of the soup and because Bayesian models tend to handle noise pretty well, I have decided to keep the column in the dataset.
+
+2. Country: Situation here is similar to Brand column and for the same reason this column will be kept but most countries will be clumped together into "other".
+
+3. Variety: This is the most important column in this dataset. As you can see, almost every soup has an unique name here, most of which include at least a hint as to what is inside the soup. Therefore we will extract additional features from this column such as type of food  used for broth, type of noodles or wether the soup is spicy or not. We will create a one-hot encoding of all these new features (see data preprocessing chapter for further details). Additionally, we will then delete soups that we weren't able to extract any features from, those will mostly be soups that rely only on their brand/product name and not on description of the contents. (later we will see that this way we will only lose about 350 soups)
+
+```{r}
+ramen_reviews <- read.csv("data/ramen-ratings.csv")
+summary(ramen_reviews$Stars)
+```
+If we take a closer look at Stars column, we find out that in addition to having 3 NA values ("Unrated" in this case), we also find out that despite the rating being in stars, there are a lot of fractions which will require us to group some of the ratings together. Additionally we can see that the ratings are heavily skewed towards 3 and 4 which we will have to keep in mind when grouping ratings together.
+
 
 ## 3. Preprocessing
 ### 1. German Credit Data
@@ -152,16 +172,79 @@ Test data are still unbalanced but not really much to do with it.
 table(german_credit_test$Risk)
 ```
 
+### 2. Ramen Reviews
+First of all we remove rows with missing rating and rows where Style column contains invalid, missing or very rare values. Since there are very few of them we can afford to just remove them.
+```{r}
+ramen_reviews <- read.csv("data/ramen-ratings.csv")
+
+#remove unrated entries
+ramen_reviews <- ramen_reviews[ramen_reviews$Stars != "Unrated", ]
+
+#remove entries with invalid or infrequent Style
+ramen_reviews$Style <- fct_lump(ramen_reviews$Style, n=4)
+ramen_reviews <- ramen_reviews[ramen_reviews$Style != "Other" ,]
+```
+
+Now we extract features from text description ("Variety" column)
+```{r}
+#extracting features from "Variety"
+ramen_reviews$Beef <- grepl("(\\b|\\w)(beef|bo|gomtang|gomguk)(\\b|\\w)", ramen_reviews$Variety, ignore.case=TRUE, perl=TRUE)
+ramen_reviews$Pork <- grepl("(\\b|\\w)(pork|tonkotsu|myeon|myun)(\\b|\\w)", ramen_reviews$Variety, ignore.case=TRUE, perl=TRUE)
+ramen_reviews$Chicken <- grepl("(\\b|\\w)(Bird|ga|chicken|duck|kung|gung|laksa|chikin)(\\b|\\w)", ramen_reviews$Variety, ignore.case=TRUE, perl=TRUE)
+ramen_reviews$Vegetable <- grepl("(\\b|\\w)(Vegetable|mushroom|vegetarian|tomato|onion|veggie|shroom|radish)(\\b|\\w)", ramen_reviews$Variety, ignore.case=TRUE, perl=TRUE)
+ramen_reviews$Miso <- grepl("(\\b|\\w)(miso)(\\b|\\w)", ramen_reviews$Variety, ignore.case=TRUE, perl=TRUE)
+ramen_reviews$WheatNoodles <- grepl("(\\b|\\w)(udon|wheat|oat|udoin|tempura|soba|u-dong)(\\b|\\w)", ramen_reviews$Variety, ignore.case=TRUE, perl=TRUE)
+ramen_reviews$Spicy <- grepl("(\\b|\\w)(hot|kimchi|spicy|pepper|yung|yum|masala|laksa|chili|chilli|curry|spice)(\\b|\\w)", ramen_reviews$Variety, ignore.case=TRUE, perl=TRUE)
+ramen_reviews$Seafood <- grepl("(\\b|\\w)(sea|food|crab|cua|fish|tom|seafood|oyster|shrimp|scallop|mentaiko|myeongnan|myeong|pollack|pollock|clam|prawn)(\\b|\\w)", ramen_reviews$Variety, ignore.case=TRUE, perl=TRUE)
+ramen_reviews$Sesame <- grepl("(\\b|\\w)(sesame)(\\b|\\w)", ramen_reviews$Variety, ignore.case=TRUE, perl=TRUE)
+ramen_reviews$RiceNoodles <- grepl("(\\b|\\w)(Rice|pad)(\\b|\\w)", ramen_reviews$Variety, ignore.case=TRUE, perl=TRUE)
+ramen_reviews$Soy <- grepl("(\\b|\\w)(soy|shio|shoyu)(\\b|\\w)", ramen_reviews$Variety, ignore.case=TRUE, perl=TRUE)
+ramen_reviews$StirFried <- grepl("(\\b|\\w)(stir|fried|stirfried|goreng|pad)(\\b|\\w)", ramen_reviews$Variety, ignore.case=TRUE, perl=TRUE)
+ramen_reviews$Creamy <- grepl("(\\b|\\w)(creamy|cream)(\\b|\\w)", ramen_reviews$Variety, ignore.case=TRUE, perl=TRUE)
+ramen_reviews$Oriental <- grepl("(\\b|\\w)(oriental)(\\b|\\w)", ramen_reviews$Variety, ignore.case=TRUE, perl=TRUE)
+
+#remove all ramen that we weren't able to extract any features from
+ramen_reviews <- ramen_reviews[rowSums(sapply(ramen_reviews[,c(8:21)], identity))!=0,]
+```
+
+Finally we clean up Star rating and transform numerical score into four categories. Then we clump infrequent values in Country and Brand to "Other". Lastly we remove obsoleted columns and drop unused levels from factors.
+```{R}
+#clumping infrequent countries of origin and brands together
+ramen_reviews$Country <- fct_lump(ramen_reviews$Country, prop=0.02)
+ramen_reviews$Brand <- fct_lump(ramen_reviews$Brand, prop=0.02)
+
+#clean up factors by dropping unused levels
+ramen_reviews <- droplevels(ramen_reviews)
+
+#group stars into four categories
+rrf <- factor(c("bad", "average", "good", "great"))
+rr4 <- (subset(ramen_reviews, grepl("^(5|4.5|4.7)", Stars, ignore.case=TRUE, perl=TRUE)))
+rr4$Rating <- rrf[4]
+rr3 <- (subset(ramen_reviews, grepl("^(4$|4.0|4.1|4.2|4.3)", Stars, ignore.case=TRUE, perl=TRUE)))
+rr3$Rating <- rrf[3]
+rr2 <- (subset(ramen_reviews, grepl("^(3.5|3.6|3.7|3.8)", Stars, ignore.case=TRUE, perl=TRUE)))
+rr2$Rating <- rrf[2]
+rr1 <- (subset(ramen_reviews, grepl("^(0|1|2|3$|3.0|3.1|3.2|3.3|3.4)", Stars, ignore.case=TRUE, perl=TRUE)))
+rr1$Rating <- rrf[1]
+ramen_reviews <- rbind(rr3, rr4, rr2, rr1)
+
+#removing useless or obsoleted columns
+ramen_reviews <- subset(ramen_reviews, select = -c(Variety, Stars, Top.Ten, Review..))
+```
+
 
 ## 4. Learning Algorithms
 ### 1. Bayesian Generalized Linear Model
-Tbe  generalized linear model (GLM) is a flexible generalization of ordinary linear regression that allows for response variables that have error distribution models other than a normal distribution. The GLM generalizes linear regression by allowing the linear model to be related to the response variable via a link function and by allowing the magnitude of the variance of each measurement to be a function of its predicted value.
+The  generalized linear model (GLM) is a flexible generalization of ordinary linear regression that allows for response variables that have error distribution models other than a normal distribution. The GLM generalizes linear regression by allowing the linear model to be related to the response variable via a link function and by allowing the magnitude of the variance of each measurement to be a function of its predicted value.
 
 The GLM consists of three elements:
 
 1. An exponential family of probability distributions.
 2. A linear predictor η = Xβ .
 3. A link function g such that E(Y|X) = μ = g−1(η).
+
+### 2. Bayesian Averaged One Dependency Estimator (AODE)
+AODE works similarly to naive Bayes however it avoids assuming feature independence. For dataset with n features AODE creates n models where each model assumes that i-th feature is dependent on all other features while all other features are independent of each other. Thus it can model up to quadratic dependencies accurately. Result returned by AODE is a simple average of all n models.
 
 ## 5. Evaluation
 ### 1. Bayesian Generalized Linear Model
