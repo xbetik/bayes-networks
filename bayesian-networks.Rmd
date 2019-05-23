@@ -627,6 +627,12 @@ Within the scope 70%(train) 30%(test), best accuracy is 0.72.
 On 95%(train) 5% test, best accuracy is around 0.76.
 These results are slightly better than Bayesian Generalized Linear Model.
 
+Hillclimbing:
+This approach has 0.7 accuracy which is not bad compared to other 2 algorithms, altough the matrix looks weird. It seems that all examples were classified as "good" which might be incorrect.
+
+The result:
+The winner here is Bayesian Averaged One Dependency Estimator with the highest accuracy 0.72 within the best possible partition setup. However all of the 3 algoritms performed well, bearing in mind the dataset was really small and should be enlarged for more serious research.
+
 ### 2. Ramen Ratings
 Initially I feared that this dataset might not have any correlation between the features and target class. Expected Ramen Squared Error of a random classifier is slightly above 2. Expected Ramen Squared Error of an optimal blind classifier (one which only knows the distribution of target classes) is roughly 1.3856.
 
