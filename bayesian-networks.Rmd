@@ -19,7 +19,7 @@ install_pckgs_if_not_installed <- function(pkg){
         install.packages(new.pkg, dependencies = TRUE)
     sapply(pkg, require, character.only = TRUE)
 }
-pckgs <- c("ggplot2", "gridExtra", "mice", "caret", "arm", "ROSE", "forcats", "AnDE")
+pckgs <- c("ggplot2", "gridExtra", "mice", "caret", "arm", "ROSE", "forcats", "AnDE", "e1071")
 suppressWarnings(install_pckgs_if_not_installed(pckgs))
 ```
 
@@ -249,6 +249,7 @@ ramen_reviews <- rbind(rr3, rr4, rr2, rr1)
 
 #removing useless or obsoleted columns
 ramen_reviews <- subset(ramen_reviews, select = -c(Variety, Stars, Top.Ten, Review..))
+
 ```
 
 ### 3. Student Performance
@@ -328,7 +329,7 @@ boxplot(eval1, eval2)
 ### 2. AODE
 #### 1. German Credit Data
 
-```{r}
+```{r aode_german}
 set.seed(123)
 aode_german_evaluation <- function(iterations, splitPercentage ) {
   accuracies <- numeric(iterations)
@@ -345,16 +346,17 @@ aode_german_evaluation <- function(iterations, splitPercentage ) {
     cat("-", sep="") # just to see the progress of training
   }
   cat("\n")
-  cat("Best accuracy for split ratio" , splitPercentage, " : ", max(accuracies))
+  cat("Best accuracy for split ratio" , splitPercentage, " : ", max(accuracies), "\n")
   accuracies
 }
 aode_ger_eval1 <- aode_german_evaluation(30, 0.7)
 aode_ger_eval2 <- aode_german_evaluation(30, 0.95)
 boxplot(aode_ger_eval1, aode_ger_eval2)
 ```
+
 #### 2. Ramen Reviews
 
-Since the classes of Rating can be considered ordered, it would be best to use evaluation methods usually used for regression. In this case we will use analogy of MSE (assuming all classes are 1 unit away from their neighbours)
+Since the classes of Rating are balanced and are ordered, it would be best to use evaluation methods based on distance from the correct class. In this case we will use analogy of MSE (all classes will be considered 1 unit away from their neighbours)
 ```{r aode_ramen}
 #table = confusion matrix, n = number of instances of test data
 ramen_squared_error <- function(table, n) {
@@ -377,7 +379,6 @@ aode_ramen_evaluation <- function(iterations, splitPercentage ) {
     indicies <- createDataPartition(ramen_reviews$Rating, p = splitPercentage, list=FALSE)
     ramen_train <- ramen_reviews[indicies, ]
     ramen_test <- ramen_reviews[-indicies, ]
-    #train_balanced_german_data <- ovun.sample(Risk ~., data=german_credit_train)$data
   
     aode_ramen_model <- aode(ramen_train)
     
@@ -387,13 +388,83 @@ aode_ramen_evaluation <- function(iterations, splitPercentage ) {
     cat("-", sep="") # just to see the progress of training
   }
   cat("\n")
-  cat("Best error for split ratio" , splitPercentage, " : ", min(errors))
+  cat("Best error for split ratio" , splitPercentage, " : ", min(errors), "\n")
   errors
 }
 aode_ramen_eval1 <- aode_ramen_evaluation(15, 0.7)
 aode_ramen_eval2 <- aode_ramen_evaluation(15, 0.95)
 boxplot(aode_ramen_eval1, aode_ramen_eval2)
+abline(h=1.3856, col = "red") #this line can sometimes cause errors/warnings
 
+```
+
+Here is a naive Bayes for a comparasion with some baseline model.
+
+```{r naive_ramen}
+#table = confusion matrix, n = number of instances of test data
+ramen_squared_error <- function(table, n) {
+  error <- 0
+  for (i in 1:4) {
+    for (j in 1:4) {
+      #print(error)
+      #print(table[i,j])
+      error <- (error + (table[i,j] * abs(i - j))) 
+    }
+  }
+  error <- error / n
+  error
+}
+
+set.seed(123)
+naive_ramen_evaluation <- function(iterations, splitPercentage ) {
+  errors <- numeric(iterations)
+  for (i in 1:iterations) {
+    indicies <- createDataPartition(ramen_reviews$Rating, p = splitPercentage, list=FALSE)
+    ramen_train <- ramen_reviews[indicies, ]
+    ramen_test <- ramen_reviews[-indicies, ]
+  
+    naive_ramen_model <- naiveBayes(Rating ~ ., data = ramen_train)
+    
+    naive_ramen_prediction <- predict(naive_ramen_model, ramen_test)
+    conf <- table(naive_ramen_prediction, ramen_test$Rating)
+    errors[i] <- ramen_squared_error(conf, length(naive_ramen_prediction))
+    cat("-", sep="") # just to see the progress of training
+  }
+  cat("\n")
+  cat("Best error for split ratio" , splitPercentage, " : ", min(errors), "\n")
+  errors
+}
+naive_ramen_eval1 <- naive_ramen_evaluation(15, 0.7)
+naive_ramen_eval2 <- naive_ramen_evaluation(15, 0.95)
+boxplot(naive_ramen_eval1, naive_ramen_eval2)
+abline(h=1.3856, col = "red") #this line can sometimes cause errors/warnings
+
+```
+
+#### 3. Student Performance
+```{r aode_student}
+set.seed(123)
+aode_student_evaluation <- function(iterations, splitPercentage ) {
+  accuracies <- numeric(iterations)
+  for (i in 1:iterations) {
+    indicies <- createDataPartition(student_performance$passed, p = splitPercentage, list=FALSE)
+    student_train <- student_performance[indicies, ]
+    student_test <- student_performance[-indicies, ]
+  
+    aode_student_model <- aode(student_train)
+    
+    aode_student_prediction <- predict(aode_student_model, student_test)
+    conf <- table(aode_student_prediction, student_test$passed)
+    accuracies[i] <- ((conf[1,1] + conf[2,2])/length(aode_student_prediction))
+    cat("-", sep="") # just to see the progress of training
+  }
+  cat("\n")
+  cat("Best accuracy for split ratio" , splitPercentage, " : ", max(accuracies), "\n")
+  accuracies
+}
+suppressWarnings(aode_student_eval1 <- aode_student_evaluation(30, 0.7))
+suppressWarnings(aode_student_eval2 <- aode_student_evaluation(30, 0.95))
+boxplot(aode_student_eval1, aode_student_eval2)
 ```
 
 ## 6. Conclusion
@@ -402,6 +473,16 @@ Bayesian Generalized Linear Model results :
 Within the scope 70%(train) 30%(test), best accuracy is around 0.7.
 On 95%(train) 5% test, best accuracy is around 0.75.
 The results are pretty poor. However the size of the dataset is not large and test set is really unbalanced(120/280 - bad/good). Therefore I think it gave us decent predictions.
+
+### 2. Ramen Ratings
+Initially I feared that this dataset might not have any correlation between the features and target class. Expected Ramen Squared Error of a random classifier is slightly above 2. Expected Ramen Squared Error of an optimal blind classifier (one which only knows the distribution of target classes) is roughly 1.3856.
+
+####AODE:
+With 75%/25% training/testing split this algorithm has consistently reached somewhat lower errors than a blind classifier would, which suggests that there is at least a faint correlation between target class and other features. However the results are very underwhelming.
+
+With 95/5 split the results are abysmal, with Q3 almost touching optimal blind classifier, which means that 25% of results are worse. This could however be due to very small size of the test set.
+
+TODO: compare with naive bayes
 
 ## 7. References
 https://archive.ics.uci.edu/ml/datasets/Statlog+%28German+Credit+Data%29  
