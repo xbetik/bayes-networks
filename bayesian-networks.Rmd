@@ -289,6 +289,8 @@ AODE works similarly to naive Bayes however it avoids assuming feature independe
 ## 5. Evaluation
 ### 1. Bayesian Generalized Linear Model
 
+#### 1. German Credit Dataset
+
 I'v made a function that performs the training process multiple times so the random paritioning doesn't effect the process.
 
 iterations - number of iterations, splitPercantage - the train/test partition ratio
@@ -325,6 +327,76 @@ eval2 <- germanEvaluation(30, 0.95)
 ```{r}
 boxplot(eval1, eval2)
 ```
+
+#### 2. Ramen Ratings
+```{r}
+#table = confusion matrix, n = number of instances of test data
+ramen_squared_error <- function(table, n) {
+  error <- 0
+  for (i in 1:4) {
+    for (j in 1:4) {
+      #print(error)
+      #print(table[i,j])
+      error <- (error + (table[i,j] * abs(i - j))) 
+    }
+  }
+  error <- error / n
+  error
+}
+
+set.seed(123)
+aode_ramen_evaluation <- function(iterations, splitPercentage ) {
+  errors <- numeric(iterations)
+  for (i in 1:iterations) {
+    indicies <- createDataPartition(ramen_reviews$Rating, p = splitPercentage, list=FALSE)
+    ramen_train <- ramen_reviews[indicies, ]
+    ramen_test <- ramen_reviews[-indicies, ]
+  
+    bayesglm_ramen_model <- train(Rating ~., data= ramen_train, method="bayesglm",
+                                          trControl = trainControl(method = "cv", number=3))
+    
+    aode_ramen_prediction <- predict(bayesglm_ramen_model, ramen_test)
+    conf <- table(aode_ramen_prediction, ramen_test$Rating)
+    errors[i] <- ramen_squared_error(conf, length(aode_ramen_prediction))
+    cat("-", sep="") # just to see the progress of training
+  }
+  cat("\n")
+  cat("Best error for split ratio" , splitPercentage, " : ", min(errors), "\n")
+  errors
+}
+aode_ramen_eval1 <- aode_ramen_evaluation(15, 0.7)
+aode_ramen_eval2 <- aode_ramen_evaluation(15, 0.95)
+boxplot(aode_ramen_eval1, aode_ramen_eval2)
+abline(h=1.3856, col = "red") #this line can sometimes cause errors/warnings
+```
+
+#### 3. Student Performance
+```{r}
+set.seed(123)
+aode_student_evaluation <- function(iterations, splitPercentage ) {
+  accuracies <- numeric(iterations)
+  for (i in 1:iterations) {
+    indicies <- createDataPartition(student_performance$passed, p = splitPercentage, list=FALSE)
+    student_train <- student_performance[indicies, ]
+    student_test <- student_performance[-indicies, ]
+  
+    bayesglm_student_model <- train(passed ~., data= student_train, method="bayesglm",
+                                          trControl = trainControl(method = "cv", number=3))
+    
+    aode_student_prediction <- predict(bayesglm_student_model, student_test)
+    conf <- table(aode_student_prediction, student_test$passed)
+    accuracies[i] <- ((conf[1,1] + conf[2,2])/length(aode_student_prediction))
+    cat("-", sep="") # just to see the progress of training
+  }
+  cat("\n")
+  cat("Best accuracy for split ratio" , splitPercentage, " : ", max(accuracies), "\n")
+  accuracies
+}
+suppressWarnings(aode_student_eval1 <- aode_student_evaluation(30, 0.7))
+suppressWarnings(aode_student_eval2 <- aode_student_evaluation(30, 0.95))
+boxplot(aode_student_eval1, aode_student_eval2)
+```
+
 
 ### 2. AODE
 #### 1. German Credit Data
@@ -473,6 +545,11 @@ Bayesian Generalized Linear Model results :
 Within the scope 70%(train) 30%(test), best accuracy is around 0.7.
 On 95%(train) 5% test, best accuracy is around 0.75.
 The results are pretty poor. However the size of the dataset is not large and test set is really unbalanced(120/280 - bad/good). Therefore I think it gave us decent predictions.
+
+Bayesian Averaged One Dependency Estimator results:
+Within the scope 70%(train) 30%(test), best accuracy is 0.72.
+On 95%(train) 5% test, best accuracy is around 0.76.
+These results are slightly better than Bayesian Generalized Linear Model.
 
 ### 2. Ramen Ratings
 Initially I feared that this dataset might not have any correlation between the features and target class. Expected Ramen Squared Error of a random classifier is slightly above 2. Expected Ramen Squared Error of an optimal blind classifier (one which only knows the distribution of target classes) is roughly 1.3856.
