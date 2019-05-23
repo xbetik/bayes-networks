@@ -19,7 +19,7 @@ install_pckgs_if_not_installed <- function(pkg){
         install.packages(new.pkg, dependencies = TRUE)
     sapply(pkg, require, character.only = TRUE)
 }
-pckgs <- c("ggplot2", "gridExtra", "mice", "caret", "arm", "ROSE", "forcats", "AnDE", "e1071")
+pckgs <- c("ggplot2", "gridExtra", "mice", "caret", "arm", "ROSE", "forcats", "AnDE", "e1071", "bnlearn")
 suppressWarnings(install_pckgs_if_not_installed(pckgs))
 ```
 
@@ -27,7 +27,7 @@ suppressWarnings(install_pckgs_if_not_installed(pckgs))
 
 1. Dataset : German Credit Data, Learning Algorithm : Bayesian Generalized Linear Model (Andrej Betik)
 2. Dataset: Ramen Reviews, Learning Algorithm: Averaged One Dependency Estimator (Petr Klanica)
-3. Dataset: Student Performance (Marcel Kubík)
+3. Dataset: Student Performance, Learning Algorithm: Hill-Climbing (Marcel Kubík)
 
 ## 2. Exploratory Analysis
 
@@ -255,22 +255,24 @@ ramen_reviews <- subset(ramen_reviews, select = -c(Variety, Stars, Top.Ten, Revi
 ### 3. Student Performance
 
 ```{r}
-student_performance = read.csv2("data/student-mat.csv")
+student_performance <- read.csv2("data/student-mat.csv")
 
 # grade categorization
-student_performance$passed = cut(student_performance$G3, labels = c("N", "P"), breaks = seq(0, 20, by = 10), right = FALSE)
+student_performance$passed <- cut(student_performance$G3, labels = c("N", "P"), breaks = seq(0, 20, by = 10), right = FALSE)
 
 # omitting NAs and selecting desired columns
-student_performance = na.omit(student_performance)[, c("reason", "studytime", "failures", "paid", "higher", "romantic", "famrel", "freetime", "goout", "absences", "Dalc", "passed")]
+student_performance <- na.omit(student_performance)[, c("reason", "studytime", "failures", "paid", "higher", "romantic", "famrel", "freetime", "goout", "absences", "Dalc", "passed")]
 
 # translating some feature values from ints to more understandable form
-student_performance$studytime[student_performance$studytime == "1"] = "less_than_2_hours"
-student_performance$studytime[student_performance$studytime == "2"] = "2_to_5_hours"
-student_performance$studytime[student_performance$studytime == "3"] = "5_to_10_hours"
-student_performance$studytime[student_performance$studytime == "4"] = "more_than_10_hours"
+student_performance$studytime[student_performance$studytime == "1"] <- "less_than_2_hours"
+student_performance$studytime[student_performance$studytime == "2"] <- "2_to_5_hours"
+student_performance$studytime[student_performance$studytime == "3"] <- "5_to_10_hours"
+student_performance$studytime[student_performance$studytime == "4"] <- "more_than_10_hours"
 
 # omitting unused feature values (e.g. failures: "4")
-student_performance = droplevels(student_performance)
+student_performance <- droplevels(student_performance)
+
+plot(student_performance$passed)
 ```
 
 ## 4. Learning Algorithms
@@ -285,6 +287,9 @@ The GLM consists of three elements:
 
 ### 2. Bayesian Averaged One Dependency Estimator (AODE)
 AODE works similarly to naive Bayes however it avoids assuming feature independence. For dataset with n features AODE creates n models where each model assumes that i-th feature is dependent on all other features while all other features are independent of each other. Thus it can model up to quadratic dependencies accurately. Result returned by AODE is a simple average of all n models.
+
+### 3. Hill-Climbing:
+This algorithm, firstly, chooses an initial network structure (usually an empty one) and computes the score of the network, which is defined as: sum of all scores of nodes, i.e. sum of conditional probabilities of all nodes. In order of maximizing the score, algorithm adds arcs with maximal score gain.
 
 ## 5. Evaluation
 ### 1. Bayesian Generalized Linear Model
@@ -539,6 +544,77 @@ suppressWarnings(aode_student_eval2 <- aode_student_evaluation(30, 0.95))
 boxplot(aode_student_eval1, aode_student_eval2)
 ```
 
+### 3. Hill-Climbing
+#### 1. Student performance
+```{r hillclimb_student}
+student_performance$absences <- cut(student_performance$absences, breaks = c(0, 5, 20, 99), right = FALSE)
+student_performance$famrel <- cut(student_performance$famrel, breaks = c(0, 3, 6), right = TRUE)
+student_performance$freetime <- cut(student_performance$freetime, breaks = c(0, 3, 6), right = TRUE)
+student_performance$goout <- cut(student_performance$goout, breaks = c(0, 3, 6), right = TRUE)
+student_performance$Dalc <- cut(student_performance$Dalc, breaks = c(0, 3, 6), right = TRUE)
+student_performance$reason <- factor(student_performance$reason)
+student_performance$studytime <- factor(student_performance$studytime)
+student_performance$failures <- factor(student_performance$failures)
+student_performance$paid <- factor(student_performance$paid)
+student_performance$higher <- factor(student_performance$higher)
+student_performance$romantic <- factor(student_performance$romantic)
+student_performance$passed <- factor(student_performance$passed)
+
+library(bnlearn)
+hc_res = hc(student_performance)
+plot(hc_res)
+model = bn.fit(hc_res, student_performance)
+prediction = predict(model, "passed", student_performance)
+confusionMatrix(data = prediction, reference = student_performance$passed, positive = "P")
+
+```
+
+#### 2. German Credit Data
+```{r hillclimb_credit}
+library(bnlearn)
+german = german_credit_data
+german$Age = factor(german$Age)
+german$Job = factor(german$Job)
+german$Credit.amount = factor(german$Credit.amount)
+german$Duration = factor(german$Duration)
+hc_res = hc(german)
+plot(hc_res)
+model = bn.fit(hc_res, german)
+prediction = predict(model, "Risk", german)
+confusionMatrix(data = prediction, reference = german$Risk)
+```
+#### 3. Ramen reviews
+```{r hillclimb_ramen}
+library(bnlearn)
+ramen = ramen_reviews
+ramen$Brand = factor(ramen$Brand)
+ramen$Style = factor(ramen$Style)
+ramen$Country = factor(ramen$Country)
+ramen$Beef = factor(ramen$Beef)
+ramen$Pork = factor(ramen$Pork)
+ramen$Chicken = factor(ramen$Chicken)
+ramen$Vegetable = factor(ramen$Vegetable)
+ramen$Miso = factor(ramen$Miso)
+ramen$WheatNoodles = factor(ramen$WheatNoodles)
+ramen$Spicy = factor(ramen$Spicy)
+ramen$Seafood = factor(ramen$Seafood)
+ramen$Sesame = factor(ramen$Sesame)
+ramen$RiceNoodles = factor(ramen$RiceNoodles)
+ramen$Soy = factor(ramen$Soy)
+ramen$StirFried = factor(ramen$StirFried)
+ramen$Creamy = factor(ramen$Creamy)
+ramen$Oriental = factor(ramen$Oriental)
+ramen$Rating = factor(ramen$Rating)
+
+ramen = na.omit(ramen)
+hc_res = hc(ramen)
+plot(hc_res)
+model = bn.fit(hc_res, ramen)
+prediction = predict(model, "Rating", ramen)
+confusionMatrix(data = prediction, reference = ramen$Rating)
+```
+
+
 ## 6. Conclusion
 ### 1. German Credit Data
 Bayesian Generalized Linear Model results :
@@ -560,6 +636,10 @@ With 75%/25% training/testing split this algorithm has consistently reached some
 With 95/5 split the results are abysmal, with Q3 almost touching optimal blind classifier, which means that 25% of results are worse. This could however be due to very small size of the test set.
 
 TODO: compare with naive bayes
+
+### 3. Student performance
+#### HillClimbing:
+This model reached fair accuracy even though the dataset was not well balanced and the algorithm generated network with only couple of arcs.
 
 ## 7. References
 https://archive.ics.uci.edu/ml/datasets/Statlog+%28German+Credit+Data%29  
