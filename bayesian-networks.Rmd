@@ -19,7 +19,7 @@ install_pckgs_if_not_installed <- function(pkg){
         install.packages(new.pkg, dependencies = TRUE)
     sapply(pkg, require, character.only = TRUE)
 }
-pckgs <- c("ggplot2", "gridExtra", "mice", "caret", "arm", "ROSE", "forcats")
+pckgs <- c("ggplot2", "gridExtra", "mice", "caret", "arm", "ROSE", "forcats", "AnDE")
 suppressWarnings(install_pckgs_if_not_installed(pckgs))
 ```
 
@@ -124,7 +124,7 @@ As we can see, there are few useless columns like review number or Top Ten ratin
 
 2. Country: Situation here is similar to Brand column and for the same reason this column will be kept but most countries will be clumped together into "other".
 
-3. Variety: This is the most important column in this dataset. As you can see, almost every soup has an unique name here, most of which include at least a hint as to what is inside the soup. Therefore we will extract additional features from this column such as type of food  used for broth, type of noodles or wether the soup is spicy or not. We will create a one-hot encoding of all these new features (see data preprocessing chapter for further details). Additionally, we will then delete soups that we weren't able to extract any features from, those will mostly be soups that rely only on their brand/product name and not on description of the contents. (later we will see that this way we will only lose about 350 soups)
+  3. Variety: This is the most important column in this dataset. As you can see, almost every soup has an unique name here, most of which include at least a hint as to what is inside the soup. Therefore we will extract additional features from this column such as type of food  used for broth, type of noodles or wether the soup is spicy or not. We will create a one-hot encoding of all these new features (see data preprocessing chapter for further details). Additionally, we will then delete soups that we weren't able to extract any features from, those will mostly be soups that rely only on their brand/product name and not on description of the contents. (later we will see that this way we will only lose about 350 soups)
 
 ```{r}
 ramen_reviews <- read.csv("data/ramen-ratings.csv")
@@ -321,9 +321,79 @@ eval1 <- germanEvaluation(30, 0.7)
 eval2 <- germanEvaluation(30, 0.95)
 ```
 
-
 ```{r}
 boxplot(eval1, eval2)
+```
+
+### 2. AODE
+#### 1. German Credit Data
+
+```{r}
+set.seed(123)
+aode_german_evaluation <- function(iterations, splitPercentage ) {
+  accuracies <- numeric(iterations)
+  for (i in 1:iterations) {
+    indicies <- createDataPartition(german_credit_data$Risk, p = splitPercentage, list=FALSE)
+    german_credit_train <- german_credit_data[indicies, ]
+    german_credit_test <- german_credit_data[-indicies, ]
+  
+    aode_german_credit_model <- aode(german_credit_train)
+    
+    aode_german_credit_prediction <- predict(aode_german_credit_model, german_credit_test)
+    conf <- table(aode_german_credit_prediction, german_credit_test$Risk)
+    accuracies[i] <- ((conf[1,1] + conf[2,2])/length(aode_german_credit_prediction))
+    cat("-", sep="") # just to see the progress of training
+  }
+  cat("\n")
+  cat("Best accuracy for split ratio" , splitPercentage, " : ", max(accuracies))
+  accuracies
+}
+aode_ger_eval1 <- aode_german_evaluation(30, 0.7)
+aode_ger_eval2 <- aode_german_evaluation(30, 0.95)
+boxplot(aode_ger_eval1, aode_ger_eval2)
+```
+#### 2. Ramen Reviews
+
+Since the classes of Rating can be considered ordered, it would be best to use evaluation methods usually used for regression. In this case we will use analogy of MSE (assuming all classes are 1 unit away from their neighbours)
+```{r aode_ramen}
+#table = confusion matrix, n = number of instances of test data
+ramen_squared_error <- function(table, n) {
+  error <- 0
+  for (i in 1:4) {
+    for (j in 1:4) {
+      #print(error)
+      #print(table[i,j])
+      error <- (error + (table[i,j] * abs(i - j))) 
+    }
+  }
+  error <- error / n
+  error
+}
+
+set.seed(123)
+aode_ramen_evaluation <- function(iterations, splitPercentage ) {
+  errors <- numeric(iterations)
+  for (i in 1:iterations) {
+    indicies <- createDataPartition(ramen_reviews$Rating, p = splitPercentage, list=FALSE)
+    ramen_train <- ramen_reviews[indicies, ]
+    ramen_test <- ramen_reviews[-indicies, ]
+    #train_balanced_german_data <- ovun.sample(Risk ~., data=german_credit_train)$data
+  
+    aode_ramen_model <- aode(ramen_train)
+    
+    aode_ramen_prediction <- predict(aode_ramen_model, ramen_test)
+    conf <- table(aode_ramen_prediction, ramen_test$Rating)
+    errors[i] <- ramen_squared_error(conf, length(aode_ramen_prediction))
+    cat("-", sep="") # just to see the progress of training
+  }
+  cat("\n")
+  cat("Best error for split ratio" , splitPercentage, " : ", min(errors))
+  errors
+}
+aode_ramen_eval1 <- aode_ramen_evaluation(15, 0.7)
+aode_ramen_eval2 <- aode_ramen_evaluation(15, 0.95)
+boxplot(aode_ramen_eval1, aode_ramen_eval2)
+
 ```
 
 ## 6. Conclusion
